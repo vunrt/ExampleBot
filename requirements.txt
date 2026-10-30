@@ -1,0 +1,5 @@
+# Точные версии: сборка на Bothost должна быть воспроизводимой.
+# [job-queue] — напоминания клиентам, [socks] — работа через SOCKS5-прокси.
+python-telegram-bot[job-queue,socks]==22.8
+python-dotenv==1.2.4
+tzdata==2026.5
