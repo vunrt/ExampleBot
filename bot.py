@@ -108,6 +108,29 @@ def _configure_logging() -> None:
         handler.flush = handler.stream.flush  # type: ignore[method-assign]
 
 
+def build_request(settings: Settings) -> tuple[HTTPXRequest, HTTPXRequest]:
+    """Создаёт HTTP-клиенты для обычных вызовов и для getUpdates.
+
+    trust_env=False обязателен: иначе httpx сам подхватывает системный прокси
+    из окружения или реестра Windows (например, socks4://127.0.0.1:10808 от
+    VPN-клиента) и падает с "Unknown scheme for proxy URL". Соединение всегда
+    выбираем явно: либо PROXY_URL, либо напрямую.
+    """
+    kwargs = {
+        "connect_timeout": settings.request_timeout,
+        "read_timeout": settings.request_timeout,
+        "write_timeout": settings.request_timeout,
+        "pool_timeout": settings.request_timeout,
+        "httpx_kwargs": {"trust_env": False},
+    }
+    request = HTTPXRequest(proxy=settings.proxy, **kwargs)
+    # getUpdates (long polling) держит соединение открытым дольше обычных вызовов.
+    get_updates_request = HTTPXRequest(
+        proxy=settings.proxy, connection_pool_size=1, **kwargs
+    )
+    return request, get_updates_request
+
+
 def main() -> None:
     _configure_logging()
     # Библиотека httpx пишет в лог полные адреса запросов, а в них — токен бота. Приглушаем.
@@ -124,19 +147,7 @@ def main() -> None:
     # (per_message=False). Для нашего сценария всё работает как задумано.
     warnings.filterwarnings("ignore", message=r".*CallbackQueryHandler", category=PTBUserWarning)
 
-    # trust_env=False обязателен: иначе httpx сам подхватывает системный прокси
-    # из окружения/реестра Windows (например, socks4://127.0.0.1:10808 от VPN-клиента)
-    # и падает с "Unknown scheme for proxy URL". Соединение выбираем только явно.
-    request_kwargs = {
-        "connect_timeout": settings.request_timeout,
-        "read_timeout": settings.request_timeout,
-        "write_timeout": settings.request_timeout,
-        "pool_timeout": settings.request_timeout,
-        "httpx_kwargs": {"trust_env": False},
-    }
-    request = HTTPXRequest(proxy=settings.proxy, **request_kwargs)
-    # getUpdates (long polling) держит соединение открытым дольше обычных вызовов.
-    get_updates_request = HTTPXRequest(proxy=settings.proxy, connection_pool_size=1, **request_kwargs)
+    request, get_updates_request = build_request(settings)
 
     builder = (
         Application.builder()
